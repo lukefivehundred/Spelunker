@@ -1,0 +1,1408 @@
+<!-- © 2026 Dr. Bill Kolomyjec. All rights reserved. Procedural cave, code & generative art design by Claude (Anthropic). -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spelunker</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #050304; overflow: hidden;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #d9cfc8; }
+  /* A small warm-amber reticle in place of the OS arrow, so aiming the headlamp doesn't break the illusion. */
+  canvas { display: block;
+    cursor: url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2226%22%20height%3D%2226%22%3E%3Cg%20stroke%3D%22%23ffdcb0%22%20stroke-width%3D%221.3%22%20stroke-linecap%3D%22round%22%20opacity%3D%220.78%22%3E%3Cline%20x1%3D%2213%22%20y1%3D%223%22%20x2%3D%2213%22%20y2%3D%229%22/%3E%3Cline%20x1%3D%2213%22%20y1%3D%2217%22%20x2%3D%2213%22%20y2%3D%2223%22/%3E%3Cline%20x1%3D%223%22%20y1%3D%2213%22%20x2%3D%229%22%20y2%3D%2213%22/%3E%3Cline%20x1%3D%2217%22%20y1%3D%2213%22%20x2%3D%2223%22%20y2%3D%2213%22/%3E%3C/g%3E%3Ccircle%20cx%3D%2213%22%20cy%3D%2213%22%20r%3D%221.5%22%20fill%3D%22%23ffdcb0%22%20opacity%3D%220.85%22/%3E%3C/svg%3E') 13 13, crosshair;
+  }
+  canvas.no-aim { cursor: none; }             /* headlamp mouse-aim off: no reticle to look at */
+  #hud { position: fixed; left: 16px; bottom: 14px; font-size: 12px; line-height: 1.6; letter-spacing: .02em;
+    opacity: .9; pointer-events: none; text-shadow: 0 1px 3px #000; transition: opacity 1.4s; }
+  #hud b { color: #ffb99a; font-weight: 600; }
+  #hud.faded { opacity: 0; }
+  #stats { position: fixed; right: 16px; bottom: 14px; font: 11px/1.5 ui-monospace, Menlo, Consolas, monospace;
+    opacity: .65; text-align: right; pointer-events: none; text-shadow: 0 1px 3px #000; }
+  #load { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: #050304; color: #a08f88; font-size: 14px; letter-spacing: .12em; text-transform: uppercase;
+    transition: opacity 1.2s; }
+  #load.gone { opacity: 0; pointer-events: none; }
+  /* Controls dialog — Ctrl/Cmd-I toggles it. */
+  #dialogWrap { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    background: rgba(3, 2, 2, 0.62); z-index: 10; cursor: default; }
+  #dialogWrap.open { display: flex; }
+  #dialog { width: min(440px, 86vw); max-height: 80vh; overflow: auto; background: linear-gradient(180deg, #241a15, #16100d);
+    border: 1px solid #4a352a; border-radius: 10px; padding: 22px 26px 18px; box-shadow: 0 18px 60px rgba(0,0,0,.6);
+    text-shadow: none; }
+  #dialog h1 { margin: 0 0 2px; font-size: 17px; letter-spacing: .06em; color: #ffcda3; font-weight: 600; }
+  #dialog .sub { margin: 0 0 16px; font-size: 11px; color: #9c8a80; letter-spacing: .04em; text-transform: uppercase; }
+  #dialog table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  #dialog td { padding: 5px 0; vertical-align: top; }
+  #dialog td.key { width: 40%; white-space: nowrap; padding-right: 10px; }
+  #dialog kbd { display: inline-block; background: #382720; border: 1px solid #5a4234; border-bottom-width: 2px;
+    border-radius: 4px; padding: 1px 7px; font: 12px ui-monospace, Menlo, Consolas, monospace; color: #ffcda3; }
+  #dialog .desc { color: #cbbdb4; }
+  #dialog .foot { margin-top: 16px; padding-top: 12px; border-top: 1px solid #3a2a22; font-size: 10.5px;
+    color: #7c6d64; line-height: 1.6; }
+  #dialog .close-hint { margin-top: 2px; }
+</style>
+</head>
+<body>
+<div id="load">Entering the cave&hellip;</div>
+<div id="hud">
+  <b>Ctrl</b>/<b>⌘</b>+<b>I</b> for controls
+</div>
+<div id="stats"></div>
+<div id="dialogWrap">
+  <div id="dialog">
+    <h1>Spelunker</h1>
+    <p class="sub">controls</p>
+    <table>
+      <tr><td class="key"><kbd>Space</kbd></td><td class="desc">pause / resume</td></tr>
+      <tr><td class="key"><kbd>↑</kbd> <kbd>↓</kbd></td><td class="desc">walking speed</td></tr>
+      <tr><td class="key"><kbd>L</kbd></td><td class="desc">headlamp on / off</td></tr>
+      <tr><td class="key"><kbd>M</kbd></td><td class="desc">mouse-aim the headlamp, on / off</td></tr>
+      <tr><td class="key"><kbd>G</kbd></td><td class="desc">look-around, on / off</td></tr>
+      <tr><td class="key"><kbd>R</kbd></td><td class="desc">generate a new cave</td></tr>
+      <tr><td class="key"><kbd>H</kbd></td><td class="desc">show / hide the stats readout</td></tr>
+      <tr><td class="key"><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>I</kbd></td><td class="desc">show / hide this dialog</td></tr>
+      <tr><td class="key"><kbd>Esc</kbd></td><td class="desc">close this dialog</td></tr>
+    </table>
+    <div class="foot">
+      © 2026 Dr. Bill Kolomyjec. All rights reserved.<br>
+      Procedural cave, code &amp; generative art design by Claude (Anthropic).
+      <div class="close-hint">Ctrl/⌘+I or Esc to close</div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ============================================================================
+ *  ENDLESS CAVE WALK  —  procedural, chunked, infinite.
+ *  Units: 1 world unit = 1 foot.
+ *
+ *  v4  Human-scale trail + wet walls: the tread narrows to shoulder-width in squeezes instead of a flat
+ *      6 ft "road", and meanders more along its course; stalactites/stalagmites crowd in closer as a
+ *      result. Walls got a damp clearcoat sheen. More small puddles, hugging the wall base like seeps,
+ *      with matching dark wet streaks on the rock above them. Headlamp aim now shows a warm reticle
+ *      instead of the OS arrow.
+ *
+ *  v3  Space: tight squeezes opening into big domed chambers, large shallow ponds, giant formations,
+ *      and a headlamp spotlight that roams (mouse-aimable) with a gaze that looks around in chambers.
+ *      Chambers are darker with thinner fog, so the beam does the revealing.
+ *
+ *  v2  Formation variety + reddish mineral palette
+ *      - stalagmites: cones, ribbed stacked-disc spires, tiered "wedding cakes", glossy candle
+ *        fingers, flowstone mounds, pencil needles, clusters on mounds, floor-to-ceiling columns
+ *      - stalactites: cones, wavy ring-rippled carrots, candle knuckles, needles, straw patches,
+ *        tooth patches, banded drapery
+ *      - colour: iron-rust / ochre / cream mineral staining (see PAL), warmer rock & lantern,
+ *        red-brown ambient, near-black warm fog (the depth fog itself is unchanged)
+ *
+ *  World layout
+ *    The cave runs along -Z (Three.js "forward"). "s" is the distance travelled
+ *    along the cave:  world z = -s.  The path centre-line is x = pathX(s).
+ *    Everything (walls, ceiling, floor, formations, pools) is a PURE FUNCTION of
+ *    s (+ seed), so neighbouring segments join with no seams and any segment can
+ *    be destroyed and rebuilt identically.
+ * ========================================================================== */
+(() => {
+'use strict';
+
+/* ------------------------------------------------------------------ CONFIG */
+const CFG = {
+  PATH_WIDTH:   6,      // ft — exactly
+  EYE_HEIGHT:   5.5,    // ft — human eye level
+  LOOK_AHEAD:   10,     // ft — lookat target distance, straight-line, on the path centre
+  HFOV:         48,     // deg — horizontal field of view (normal lens ≈ 45–50°)
+  WALL_MIN:     6,      // ft — wall distance from the path EDGE, min
+  WALL_MAX:     18,     //                                        max
+  ROUGH:        0.5,    // ft — wall surface roughness (macro range is inset by this so 6..18 always holds)
+  SEG_LEN:      60,     // ft per procedural segment
+  AHEAD:        185,    // ft — keep the generated frontier at least this far ahead of the camera
+  TRAIL:        45,     // ft — destroy segments whose far end is this far behind the camera
+  WALK_SPEED:   3.3,    // ft/s — a relaxed amble (75% of the original 4.4 ft/s ≈ 3 mph pace)
+  POOL_CHANCE:  0.74,   // per segment — small puddles seeping off the wall base
+  N_STALACTITE: 720,    // instance budget per segment (each straw in a patch counts)
+  N_STALAGMITE: 520,
+  CELL:         360,    // ft — lattice cell: at most one chamber per cell
+  CHAMBER_CHANCE: 0.85, // chance a cell holds a chamber
+  RED_BIAS:     0,      // formations: +0.3 = deeper rust/oxide, -0.3 = paler cream/bone (walls & lantern: see MATERIALS)
+  SEED:         (Math.random() * 1e9) | 0,
+};
+// Tread half-width: v3 kept this at a constant 6 ft, which read as a paved "road" through the cave.
+// v4 lets it wander — a human-scale trail that narrows to shoulder-width single-file in squeezes —
+// via pathHalf(s) below (a pure function of s, like everything else). CFG.PATH_WIDTH is now just
+// the nominal figure used in comments; nothing reads it directly any more.
+const HALF = CFG.PATH_WIDTH / 2;                // kept only as the old nominal reference
+function pathHalf(s) {
+  const g = 0.6 * vn1(s / 42, 90) + 0.4 * vn1(s / 16, 91);
+  let h = 1.55 + 1.35 * (0.5 + 0.5 * Math.tanh(1.9 * g));        // meanders ~1.55..2.9 ft (3.1..5.8 ft wide)
+  const C = spaceAt(s);
+  if (C.q > 0) h = lerp(h, 1.05 + 0.30 * (0.5 + 0.5 * vn1(s / 6, 92)), C.q);   // squeeze: ~2.1..2.7 ft — one person, sideways at the pinch
+  return h;
+}
+const WATER_Y = -0.12;
+const TILT = 0.08;                 // max formation lean (rad) — used for path-clearance margin
+
+/* ------------------------------------------------------------ SEEDED NOISE */
+let SEED = CFG.SEED;
+const fade = t => t * t * t * (t * (t * 6 - 15) + 10);
+const lerp = (a, b, t) => a + (b - a) * t;
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+
+function hash3(x, y, ch) {
+  let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(ch | 0, 0x9e3779b1) ^ Math.imul(SEED, 1274126177);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+function vn1(x, ch) {                       // smooth value noise, -1..1
+  const i = Math.floor(x), u = fade(x - i);
+  return lerp(hash3(i, 0, ch), hash3(i + 1, 0, ch), u) * 2 - 1;
+}
+function vn2(x, y, ch) {                    // smooth value noise, -1..1
+  const xi = Math.floor(x), yi = Math.floor(y), u = fade(x - xi), v = fade(y - yi);
+  const a = hash3(xi, yi, ch), b = hash3(xi + 1, yi, ch), c = hash3(xi, yi + 1, ch), d = hash3(xi + 1, yi + 1, ch);
+  return lerp(lerp(a, b, u), lerp(c, d, u), v) * 2 - 1;
+}
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* ------------------------------------------------------- CAVE DEFINITION
+ *  Every function below is a pure function of s (distance along the cave).   */
+
+// Path centre-line: a sine wave, warped and perturbed by noise so it never looks mechanical.
+// v4 adds a mid-scale wander (the `meander` term) on top of the broad course, so the path snakes
+// through its own corridor rather than just tracing one long, gentle curve.
+const PATH_AMP = 26, PATH_WAVELENGTH = 240;
+function pathX(s) {
+  const k = (Math.PI * 2) / PATH_WAVELENGTH;
+  const phaseWarp = 0.75 * vn1(s / 95, 1);                       // noise bends the sine's phase
+  const sine = PATH_AMP * Math.sin(k * s + phaseWarp + 0.6);
+  const meander = 4.0 * vn1(s / 55, 5);                          // mid-scale S-bends along the course
+  const jitter = 3.0 * vn1(s / 58, 2) + 1.0 * vn1(s / 26, 3);    // noise modifier
+  return sine + meander + jitter;
+}
+// Local frame of the path at s. Right-hand normal in world XZ is (rx, rz).
+// (A tiny ring cache: mesh builders ask for the same few s values over and over. Read the fields immediately.)
+const _fr = [{ s: NaN }, { s: NaN }, { s: NaN }, { s: NaN }]; let _fri = 0;
+function frame(s) {
+  for (let k = 0; k < 4; k++) if (_fr[k].s === s) return _fr[k];
+  const e = 0.25;
+  const dX = (pathX(s + e) - pathX(s - e)) / (2 * e);
+  const n = Math.hypot(1, dX);
+  const o = _fr[_fri]; _fri = (_fri + 1) & 3;
+  o.s = s; o.x = pathX(s); o.dX = dX; o.n = n; o.rx = 1 / n; o.rz = dX / n;
+  return o;
+}
+/* ------------------------------------------------------------- SPACE MODEL
+ *  The cave alternates between passages, tight SQUEEZES and large domed CHAMBERS.
+ *  A lattice of cells (one per CFG.CELL ft) may each hold a chamber: an envelope o(s) in 0..1
+ *  ramps the walls out and the ceiling up.  A squeeze q(s) pinches the passage just before (and
+ *  sometimes after) a chamber, so you funnel through a narrow neck and then the space opens up.
+ *  Chambers can be lopsided: one wall stays close (you edge along a cliff) while the other side
+ *  drops away into the dark.  Everything is a pure function of (s, SEED).                     */
+const cellCache = new Map();
+function cellInfo(i) {
+  let c = cellCache.get(i); if (c) return c;
+  const h = k => hash3(i, k, 500);
+  const center = i * CFG.CELL + CFG.CELL * (0.38 + 0.24 * h(1));
+  const half = 26 + 34 * h(2), ramp = 44 + 20 * h(3);                      // open half-length, and length of the funnel in/out
+  let BL = 20 + 50 * Math.pow(h(4), 0.8), BR = 20 + 50 * Math.pow(h(5), 0.8);   // wall distance from the path edge when fully open
+  const lop = h(6);
+  if (lop < 0.28) BL = 4 + 4 * h(7); else if (lop > 0.72) BR = 4 + 4 * h(7);     // hug one wall
+  c = {
+    i, center, half, ramp, BL, BR,
+    has: h(0) < CFG.CHAMBER_CHANCE,
+    HB: 34 + 30 * h(8),                                                      // dome height
+    sqIn:  h(10) < 0.8 ? center - half - ramp - (38 + 30 * h(9))  : null,   // squeeze on the way in
+    sqOut: h(12) < 0.5 ? center + half + ramp + (38 + 30 * h(11)) : null,   // ...and sometimes on the way out
+    sqR: 7 + 9 * h(13),
+  };
+  cellCache.set(i, c); return c;
+}
+// { o: chamber openness 0..1, q: squeeze 0..1, BL, BR: open wall offsets, HB: dome height, nf: corridor width noise 0..1 }
+// NB: returns a shared object — read what you need before calling again.
+let _spS = NaN;
+const _sp = { o: 0, q: 0, BL: 0, BR: 0, HB: 0, nf: 1 };
+function spaceAt(s) {
+  if (s === _spS) return _sp;
+  _spS = s;
+  const i0 = Math.floor(s / CFG.CELL);
+  let o = 0, w = 0, BL = 0, BR = 0, HB = 0, q = 0;
+  for (let i = i0 - 1; i <= i0 + 1; i++) {
+    const c = cellInfo(i);
+    if (c.has) {
+      const e = sstep(c.center - c.half - c.ramp, c.center - c.half, s) * (1 - sstep(c.center + c.half, c.center + c.half + c.ramp, s));
+      if (e > 0) { if (e > o) o = e; w += e; BL += c.BL * e; BR += c.BR * e; HB += c.HB * e; }
+    }
+    if (c.sqIn !== null)  q = Math.max(q, 1 - sstep(c.sqR, c.sqR + 16, Math.abs(s - c.sqIn)));
+    if (c.sqOut !== null) q = Math.max(q, 1 - sstep(c.sqR, c.sqR + 16, Math.abs(s - c.sqOut)));
+  }
+  if (w > 0) { BL /= w; BR /= w; HB /= w; }
+  _sp.o = o; _sp.q = q * (1 - o); _sp.BL = BL; _sp.BR = BR; _sp.HB = HB;
+  _sp.nf = 0.5 + 0.5 * vn1(s / 140, 41);
+  return _sp;
+}
+
+// Distance from the path EDGE to the wall, per side.
+//   corridor: the v2 range (6..18 ft) scaled 0.62..1 by a slow noise;  squeeze: ~2 ft;  chamber: BL / BR (up to ~70 ft).
+function wallOffset(s, side) {                 // side: -1 left, +1 right
+  const ch = side < 0 ? 10 : 11;
+  const g = 0.75 * vn1(s / 52, ch) + 0.25 * vn1(s / 19, ch + 4);
+  const t = 0.5 + 0.5 * Math.tanh(2.7 * g);    // pushes values toward the extremes so the full range is used
+  const C = spaceAt(s);
+  let off = ((CFG.WALL_MIN + CFG.ROUGH) + (CFG.WALL_MAX - CFG.WALL_MIN - 2 * CFG.ROUGH) * t) * (0.62 + 0.38 * C.nf);
+  if (C.q > 0) off = lerp(off, 1.8 + 1.0 * (0.5 + 0.5 * vn1(s / 9, ch + 40)), C.q);
+  if (C.o > 0) off = lerp(off, (side < 0 ? C.BL : C.BR) * (0.82 + 0.18 * vn1(s / 31, ch + 30)), C.o);
+  return off;
+}
+const wallHalfWidth = (s, side) => pathHalf(s) + wallOffset(s, side);   // centre-line -> wall (macro)
+function ceilH(s) {                            // dome height above the floor
+  const g = 0.7 * vn1(s / 64, 20) + 0.3 * vn1(s / 23, 21);
+  let h = 15 + 12 * (0.5 + 0.5 * Math.tanh(1.7 * g));
+  const C = spaceAt(s);
+  h *= 0.72 + 0.28 * C.nf;
+  if (C.q > 0) h = lerp(h, 8.8 + 2.0 * (0.5 + 0.5 * vn1(s / 11, 43)), C.q);
+  if (C.o > 0) h = lerp(h, C.HB * (0.86 + 0.14 * vn1(s / 37, 22)), C.o);
+  return h;
+}
+// wall/ceiling surface relief.  In passages |value| <= ROUGH; chambers add big slow bulges and alcoves,
+// faded out where the wall is close to the path so the 6-ft path never gets crowded.
+// Features are laid out in ARC LENGTH (u ~ ft around the vault), so they stay isotropic on tall narrow cliffs
+// and on huge domes alike (for a typical passage this matches the original phi-based pattern).
+function rough(s, phi, W, H) {
+  const u = phi * (W + H) * 0.5;
+  let d = 0.26 * vn2(s / 6.5, u / 7.7, 30) + 0.16 * vn2(s / 2.6, u / 3.35, 31) + 0.08 * vn2(s / 1.1, u / 1.51, 32);
+  const o = spaceAt(s).o;
+  if (o > 0) d += o * clamp((W - pathHalf(s) - 2.0) / 12, 0, 1) * (3.2 * vn2(s / 19, u / 19, 33) + 1.2 * vn2(s / 7.5, u / 6, 34));
+  return d;
+}
+
+// Cross-section of the vault: half-ellipse from right wall base (phi=0), over the roof, to left wall base (phi=PI).
+// Writes local lateral offset (o.lat, + = right of path centre) and height (o.y) plus the outward unit normal (o.nx,o.ny).
+function archLocal(s, phi, o) {
+  const c = Math.cos(phi), sn = Math.sin(phi);
+  const wl = wallHalfWidth(s, -1), wr = wallHalfWidth(s, 1);
+  const W = wl + (wr - wl) * sstep(-1, 1, c);
+  const H = ceilH(s);
+  let nx = c / W, ny = sn / H;
+  const nl = Math.hypot(nx, ny) || 1; nx /= nl; ny /= nl;
+  const d = rough(s, phi, W, H);
+  o.lat = W * c + nx * d;
+  o.y = H * sn + ny * d;
+  o.nx = nx; o.ny = ny;
+  return o;
+}
+// Lateral extent of the floor at s (where floor meets the wall), per side.
+const floorEdge = (s, side) => {
+  const W = wallHalfWidth(s, side), H = ceilH(s);
+  return side > 0 ? W + rough(s, 0, W, H) : -(W + rough(s, Math.PI, W, H));
+};
+
+// Floor height. Perfectly flat & clear across the 6-ft path, rubble rising toward the walls.
+// Chambers add rolling hummocks and talus banked against the walls.  `pools` is a list of pool plans.
+function floorH(s, l, pools) {
+  const a = Math.abs(l), side = l < 0 ? -1 : 1;
+  const W = wallHalfWidth(s, side);
+  let h = 0.03 * vn2(s / 1.7, l / 1.7, 40);                                   // faint tread texture
+  const rise = sstep(pathHalf(s) + 0.2, pathHalf(s) + 4.5, a) * (0.25 + 1.2 * (0.5 + 0.5 * vn2(s / 5, l / 5, 41)))
+             + sstep(W - 4, W, a) * 1.1
+             + sstep(pathHalf(s) + 0.6, W, a) * 0.35 * (0.5 + 0.5 * vn2(s / 1.8, l / 1.8, 42));
+  h += rise;
+  const o = spaceAt(s).o;
+  if (o > 0) {
+    const u = sstep(0.45, 1.0, a / W), tw = clamp((W - pathHalf(s) - 2) / 10, 0.15, 1);
+    h += o * (1.6 * (0.5 + 0.5 * vn2(s / 13, l / 13, 44)) * sstep(pathHalf(s) + 3, pathHalf(s) + 14, a)
+            + tw * 5.0 * u * u * (0.55 + 0.45 * vn2(s / 9, l / 9, 45)));
+  }
+  for (let k = 0; k < pools.length; k++) {
+    const q = poolD(pools[k], s, l);
+    const b = 1 - sstep(1.0, 2.0, q);                    // flatten toward y=0 around the pool
+    h *= (1 - b);
+    h -= 0.9 * (1 - sstep(0.5, 1.0, q));                 // scoop the basin
+  }
+  return h;
+}
+function poolD(p, s, l) {                                // normalised (elliptical) distance from pool centre
+  const dl = (l - p.l) / p.rl, ds = (s - p.s) / p.rs;
+  return Math.sqrt(dl * dl + ds * ds) * (1 + 0.10 * vn2(dl * 1.2 + p.k, ds * 1.2, 51));
+}
+// is (s,l) within `pad` ft of any pool's water?
+function inPool(pools, s, l, pad) {
+  for (let k = 0; k < pools.length; k++) { const p = pools[k]; if (poolD(p, s, l) < 1.0 + pad / Math.min(p.rl, p.rs)) return true; }
+  return false;
+}
+
+/* --------------------------------------------------------------------- PONDS
+ *  Big shallow ponds live in chambers, on the open side of the path (Dream-Lake style: knee-deep,
+ *  mirror-still).  A pond is planned per chamber cell — a pure function — so every segment it
+ *  touches sees the same plan.  Small puddles remain in ordinary corridor segments.            */
+const pondCache = new Map();
+function chamberPond(i) {
+  if (pondCache.has(i)) return pondCache.get(i);
+  const c = cellInfo(i), h = k => hash3(i, 20 + k, 500);
+  let p = null;
+  if (c.has && h(0) < 0.75) {
+    const side = c.BR > c.BL ? 1 : -1, gap = 2.5;
+    const rsWish = 12 + 22 * h(1), rlWish = 7 + 16 * h(2);
+    const s = c.center + (h(3) - 0.5) * c.half * 0.9;
+    let wmin = 1e9;
+    for (let u = s - rsWish * 1.25; u <= s + rsWish * 1.25; u += 2) wmin = Math.min(wmin, wallHalfWidth(u, side));
+    const rl = Math.min(rlWish, (wmin - pathHalf(s) - gap - 3.0) / 2.3);              // keep the outer shore off the wall
+    if (rl >= 5) p = { s, l: side * (pathHalf(s) + gap + 1.15 * rl), rl, rs: rsWish, k: h(4) * 50, side, big: true };
+  }
+  pondCache.set(i, p); return p;
+}
+// A small still puddle beside the path — mostly little seep-pools hugging the wall base, as if trickling
+// off a crack, with the occasional larger one. Biased toward the wall rather than centred in the corridor.
+function planSmallPool(s0, rng) {
+  if (rng() >= CFG.POOL_CHANCE) return null;
+  const side = rng() < 0.5 ? -1 : 1;
+  const rlWish = 0.55 + 2.15 * Math.pow(rng(), 1.6);          // mostly small seeps, occasionally a real puddle
+  const rsWish = rlWish * (1.0 + 0.8 * rng());
+  let best = null;
+  for (let t = 0; t < 10; t++) {                          // pick the most spacious spot among a few candidates
+    const rs = Math.min(rsWish, 5.5);
+    const margin = rs * 2.1 + 1;
+    const sc = s0 + margin + rng() * (CFG.SEG_LEN - 2 * margin);
+    let wmin = 1e9;
+    for (let u = sc - rs * 2.1; u <= sc + rs * 2.1; u += 1) wmin = Math.min(wmin, wallHalfWidth(u, side));
+    if (!best || wmin > best.wmin) best = { sc, wmin, rs };
+  }
+  const ph = pathHalf(best.sc);
+  // keep inner edge >= 0.6 ft off the path, outer edge >= 1 ft off the wall
+  const rlCap = (best.wmin - CFG.ROUGH - 1.0 - (ph + 0.6)) / 2.15;
+  if (rlCap < 0.5) return null;                           // squeeze: no room even for a seep
+  const rl = Math.min(rlWish, rlCap), rs = Math.min(rsWish, best.rs);
+  // hug the wall (outer shore just off the rock) rather than sit mid-corridor, so it reads as a seep, not a puddle you'd trip over
+  const l = side * (best.wmin - CFG.ROUGH - 1.0 - 0.85 * rl);
+  return { s: best.sc, l, rl, rs, k: rng() * 50, side };
+}
+
+// local (s, lat, y) -> world
+function toWorld(s, lat, y, out) {
+  const f = frame(s);
+  return out.set(f.x + lat * f.rx, y, -s + lat * f.rz);
+}
+
+/* ------------------------------------------------------------- THREE SETUP */
+const canvasHost = document.body;
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.NoToneMapping;     // (r128 also tone-maps render targets; off keeps the pool reflection consistent)
+canvasHost.appendChild(renderer.domElement);
+
+const FOG_COLOR = new THREE.Color(0x040203);
+const FOG_DENSITY = 0.0185;         // passages
+const FOG_CHAMBER = 0.0105;         // chambers: thinner, so the headlamp can reach into the depths
+const HEAD_PASSAGE = 1.5, HEAD_CHAMBER = 4.6;   // headlamp intensity in passages / chambers
+const scene = new THREE.Scene();
+scene.background = FOG_COLOR;
+scene.fog = new THREE.FogExp2(FOG_COLOR, FOG_DENSITY);
+
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 500);
+scene.add(camera);
+function applyFov() {
+  const aspect = window.innerWidth / window.innerHeight;
+  camera.aspect = aspect;
+  camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(CFG.HFOV) / 2) / aspect)); // fixed HORIZONTAL fov
+  camera.updateProjectionMatrix();
+}
+
+// Lighting: a warm hand-held lantern + a whisper of cool ambient so far shapes stay readable.
+const hemi = new THREE.HemisphereLight(0x4a4468, 0x3c1c14, 0.55);
+scene.add(hemi);
+const lantern = new THREE.PointLight(0xffb680, 2.3, 95, 1.7);
+lantern.position.set(0.7, -0.6, -0.3);          // camera-space: slightly right, low, forward
+camera.add(lantern);
+// Headlamp: a soft-edged spot on the traveller's forehead. Aimed each frame by the gaze system (see CAMERA / WALK).
+const headlamp = new THREE.SpotLight(0xfff1de, HEAD_PASSAGE, 320, 0.36, 0.8, 1.0);
+scene.add(headlamp); scene.add(headlamp.target);
+
+// Global clip plane used only while rendering the pool reflection (kept always-on so the shader variant never changes).
+const clipPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 1e5);
+renderer.clippingPlanes = [clipPlane];
+
+/* --------------------------------------------------------------- MATERIALS */
+function makeRockTexture() {
+  const N = 512, cv = document.createElement('canvas'); cv.width = cv.height = N;
+  const ctx = cv.getContext('2d'), img = ctx.createImageData(N, N);
+  const tn = (x, y, per, ch) => {                                // periodic value noise (tiles seamlessly)
+    const xi = Math.floor(x), yi = Math.floor(y), u = fade(x - xi), v = fade(y - yi);
+    const x0 = ((xi % per) + per) % per, x1 = (x0 + 1) % per, y0 = ((yi % per) + per) % per, y1 = (y0 + 1) % per;
+    return lerp(lerp(hash3(x0, y0, ch), hash3(x1, y0, ch), u), lerp(hash3(x0, y1, ch), hash3(x1, y1, ch), u), v);
+  };
+  for (let py = 0; py < N; py++) for (let px = 0; px < N; px++) {
+    let v = 0, amp = 0.5, tot = 0;
+    for (let o = 0; o < 6; o++) { const f = 4 << o; v += amp * tn(px / N * f, py / N * f, f, 60 + o); tot += amp; amp *= 0.55; }
+    v /= tot;
+    const vein = Math.pow(1 - Math.abs(2 * tn(px / N * 6, py / N * 6, 6, 70) - 1), 12) * 0.10;   // thin cracks
+    const g = clamp(0.30 + 0.62 * v - vein + 0.10 * (tn(px / N * 64, py / N * 64, 64, 71) - 0.5), 0, 1);
+    const i = (py * N + px) * 4;
+    img.data[i] = 255 * g * 1.00; img.data[i + 1] = 255 * g * 0.91; img.data[i + 2] = 255 * g * 0.80; img.data[i + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  t.encoding = THREE.sRGBEncoding;
+  return t;
+}
+const rockTex = makeRockTexture();
+// Walls get a wet-rock sheen (clearcoat) to match the glossy formations — real limestone walls are damp,
+// not chalky. The clearcoat sits on top of the rough base coat, so the bump/vertex-colour detail still reads.
+const wallMat = new THREE.MeshPhysicalMaterial({ color: 0xb59a8c, vertexColors: true, map: rockTex, bumpMap: rockTex, bumpScale: 0.75, roughness: 0.58, metalness: 0, clearcoat: 0.4, clearcoatRoughness: 0.3 });
+const floorMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, vertexColors: true, map: rockTex, bumpMap: rockTex, bumpScale: 0.45, roughness: 0.75, metalness: 0, clearcoat: 0.2, clearcoatRoughness: 0.35 });
+const formMat = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.8, metalness: 0, flatShading: true });
+
+/* ---------------------------------------------------------- MINERAL PALETTE
+ *  Linear RGB.  A formation's instance colour is its TIP / dominant mineral colour; the
+ *  vertex colours then darken and redden it toward the wet iron-stained base, so every
+ *  spire reads rust -> ochre -> cream from foot to tip (as in the reference photo).      */
+const PAL = {
+  bone:  [0.82, 0.72, 0.62],     // pale calcite — straws, fresh drip tips
+  cream: [0.88, 0.68, 0.50],
+  ochre: [0.86, 0.52, 0.30],
+  rust:  [0.74, 0.34, 0.21],
+  oxide: [0.56, 0.22, 0.16],     // deep iron-red
+};
+const PAL_STOPS = [PAL.bone, PAL.cream, PAL.ochre, PAL.rust, PAL.oxide];
+// Mineral staining is a slow noise field over the cave, so neighbouring formations share a hue family.
+// bias: <0 paler, >0 redder.
+function mineralColor(s, lat, bias, jitter, out) {
+  const field = 0.5 + 0.5 * vn2(s / 15, lat / 7, 120);
+  const x = clamp(field * 1.20 + bias + jitter + CFG.RED_BIAS, 0, 0.999) * (PAL_STOPS.length - 1);
+  const i = Math.floor(x), f = x - i, a = PAL_STOPS[i], b = PAL_STOPS[i + 1];
+  return out.setRGB(lerp(a[0], b[0], f), lerp(a[1], b[1], f), lerp(a[2], b[2], f));
+}
+// Base tint ratio (multiplies the instance colour): dark iron-rust at the foot -> untinted at the tip.
+function baseTint(t, out) {
+  const w = Math.pow(sstep(0.0, 0.85, t), 0.8);
+  out[0] = lerp(0.50, 1.0, w); out[1] = lerp(0.24, 0.97, w); out[2] = lerp(0.14, 0.88, w);
+  return out;
+}
+
+/* ------------------------------------------------------------- SHAPE LIBRARY
+ *  Every shape is authored with its base at y=0 (unit radius) and its tip at y=1, and is
+ *  placed with scale (radius, length, radius).  Hanging shapes are the same meshes flipped.
+ *
+ *  Vocabulary, taken from the reference photo:
+ *    cone     the classic tapered, faceted stalactite / stalagmite
+ *    spire    tall, stacked-disc "ribbed" tower with a blunt dome tip
+ *    tiered   wedding-cake stalagmite: a few broad terraces
+ *    candle   rounded, knuckly finger — glossy, wet-looking flowstone
+ *    mound    low, lumpy flowstone dome (the orange bubbly bases)
+ *    pencil   thin needle
+ *    straw    hair-thin hollow tube (comes in dense patches)
+ *    carrot   thick, wavy, ring-rippled stalactite with a slightly crooked axis
+ *    drape    hanging curtain / "bacon" sheet with banding and a pointed lower edge
+ *    column   floor-to-ceiling hourglass pillar with vertical fluting                    */
+const TAU = Math.PI * 2;
+
+function lathe(o) {
+  const S = o.sides, R = o.rings, seed = o.seed || 0;
+  const N = (R + 1) * (S + 1);
+  const pos = new Float32Array(N * 3), col = new Float32Array(N * 3), uv = new Float32Array(N * 2), tint = [0, 0, 0];
+  const ph = [hash3(seed, 1, 910) * TAU, hash3(seed, 2, 910) * TAU, hash3(seed, 3, 910) * TAU];
+  for (let i = 0; i <= R; i++) {
+    const t = i / R, base = o.profile(t);
+    for (let j = 0; j <= S; j++) {
+      const jj = j % S, th = (jj / S) * TAU;         // seam vertices are identical -> no crack
+      let r = base;
+      if (o.lump)  r *= 1 + o.lump * (0.5 * Math.sin(2 * th + ph[0] + 3 * t) + 0.3 * Math.sin(3 * th + ph[1] - 5 * t) + 0.2 * Math.sin(5 * th + ph[2] + 8 * t));
+      if (o.flute) r *= 1 + o.flute * Math.sin(o.fluteN * th + ph[1]);
+      if (o.jit)   r *= 1 + o.jit * (hash3(jj * 31 + i, i, 911 + seed) * 2 - 1);
+      let cx = 0, cz = 0;
+      if (o.bend) {                                   // crooked axis, in units of base radius
+        const b = o.bend * t * Math.sin(t * 2.7 + ph[2]);
+        cx = b * Math.cos(ph[0]); cz = b * Math.sin(ph[0]);
+      }
+      const k = (i * (S + 1) + j) * 3;
+      pos[k] = cx + Math.cos(th) * r; pos[k + 1] = t; pos[k + 2] = cz + Math.sin(th) * r;
+      uv[(i * (S + 1) + j) * 2] = (j / S) * 3; uv[(i * (S + 1) + j) * 2 + 1] = t * 2;
+      const tt = o.sym ? 1 - Math.abs(2 * t - 1) : t;
+      const kk = (o.shade ? o.shade(t, th) : 0.80 + 0.20 * t) * (1 + 0.12 * (hash3(jj * 13 + i * 7, i, 912 + seed) - 0.5));
+      baseTint(tt, tint);
+      col[k] = kk * tint[0]; col[k + 1] = kk * tint[1]; col[k + 2] = kk * tint[2];
+    }
+  }
+  const idx = [];
+  for (let i = 0; i < R; i++) for (let j = 0; j < S; j++) {
+    const a = i * (S + 1) + j, b = (i + 1) * (S + 1) + j, c = a + 1, d = b + 1;
+    idx.push(a, b, c, c, b, d);                       // outward-facing winding
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  // weld normals across the seam (and at a pointed tip) so smooth-shaded shapes have no visible crease
+  const nor = g.attributes.normal;
+  for (let i = 0; i <= R; i++) {
+    const a = i * (S + 1), b = a + S;
+    const nx = nor.getX(a) + nor.getX(b), ny = nor.getY(a) + nor.getY(b), nz = nor.getZ(a) + nor.getZ(b), l = Math.hypot(nx, ny, nz) || 1;
+    nor.setXYZ(a, nx / l, ny / l, nz / l); nor.setXYZ(b, nx / l, ny / l, nz / l);
+  }
+  if (o.profile(1) < 0.02) {
+    const a = R * (S + 1); let nx = 0, ny = 0, nz = 0;
+    for (let j = 0; j < S; j++) { nx += nor.getX(a + j); ny += nor.getY(a + j); nz += nor.getZ(a + j); }
+    const l = Math.hypot(nx, ny, nz) || 1;
+    for (let j = 0; j <= S; j++) nor.setXYZ(a + j, nx / l, ny / l, nz / l);
+  }
+  return g;
+}
+
+const SHAPES = {};
+
+// cone — the classic faceted taper (original silhouette, finer facets so big ones don't look low-poly)
+SHAPES.cone = lathe({ sides: 11, rings: 11, jit: 0.11, lump: 0.10, seed: 9,
+  profile: t => Math.pow(1 - t, 0.85) * (1 + 0.16 * Math.sin(t * 7.0 + hash3(0, 0, 901) * 6)) });
+
+// spire — ten stacked discs, each widest at its lower lip, under a blunt dome
+SHAPES.spire = lathe({ sides: 10, rings: 50, lump: 0.10, seed: 1,
+  profile: t => {
+    const env = Math.pow(1 - Math.pow(t, 2.2), 0.5) * (1 - 0.35 * t);
+    const f = (t * 10) % 1;
+    return env * (1 - 0.24 * Math.pow(f, 1.1));
+  },
+  shade: (t) => 0.78 + 0.22 * t });
+
+// tiered — five broad terraces (wedding cake), each with a soft shoulder
+SHAPES.tiered = lathe({ sides: 12, rings: 30, lump: 0.08, seed: 2,
+  profile: t => {
+    const n = 5, k = Math.min(n - 1, Math.floor(t * n)), u = t * n - k;
+    const rk = Math.pow(1 - k / n, 0.65), rk1 = Math.pow(1 - (k + 1) / n, 0.65);
+    return lerp(rk, rk1, sstep(0.78, 1.0, u)) + 0.07 * rk * Math.sin(Math.PI * Math.min(1, u * 1.2));
+  } });
+
+// candle — rounded, knuckly finger with a domed tip; wet-looking
+SHAPES.candle = lathe({ sides: 10, rings: 16, lump: 0.16, seed: 3,
+  profile: t => Math.pow(1 - Math.pow(t, 2.6), 0.5) * (1 + 0.16 * Math.sin(t * 13 + 1.3)) * (1 - 0.18 * t) });
+
+// mound — flowstone dome; flatten it with a small length
+SHAPES.mound = lathe({ sides: 14, rings: 10, lump: 0.40, seed: 4,
+  profile: t => Math.sqrt(Math.max(0, 1 - t * t)) * (1 + 0.10 * Math.sin(t * 9)),
+  shade: (t) => 0.9 + 0.1 * t });
+
+// pencil — thin needle
+SHAPES.pencil = lathe({ sides: 5, rings: 4, jit: 0.05, lump: 0.05, seed: 5,
+  profile: t => Math.pow(1 - t, 0.4) });
+
+// straw — hair-thin hollow tube, faintly tapering, closed at the drip
+SHAPES.straw = lathe({ sides: 5, rings: 5, seed: 6,
+  profile: t => (1 - 0.35 * t) * (1 - sstep(0.90, 1, t)),
+  shade: (t) => 0.9 + 0.1 * t });
+
+// carrot — thick, wavy stalactite with fine ring ripples and a crooked axis
+SHAPES.carrot = lathe({ sides: 9, rings: 22, lump: 0.12, bend: 1.6, seed: 7,
+  profile: t => Math.pow(1 - t, 0.92) * (1 + 0.07 * Math.sin(t * 38 + 0.6) + 0.10 * Math.sin(t * 9 + 2)) });
+
+// column — hourglass, flared at both ends, with vertical fluting; tint is symmetric (dark at both feet)
+SHAPES.column = lathe({ sides: 14, rings: 24, lump: 0.12, flute: 0.10, fluteN: 7, sym: true, seed: 8,
+  profile: t => (0.62 + 0.38 * Math.pow(Math.abs(2 * t - 1), 2.2)) * (1 + 0.09 * Math.sin(t * 50) + 0.06 * Math.sin(t * 11 + 1)),
+  shade: (t) => 0.72 + 0.28 * Math.sin(Math.PI * t) });
+
+// drape — hanging curtain: width 1 (x), hangs from y=0 to y=1, folds toward +z.  Bands run parallel to the lower edge.
+SHAPES.drape = (() => {
+  const C = 14, R = 18, pos = new Float32Array((R + 1) * (C + 1) * 3), col = new Float32Array(pos.length), uv = new Float32Array((R + 1) * (C + 1) * 2), tint = [0, 0, 0];
+  for (let i = 0; i <= R; i++) {
+    const t = i / R;
+    for (let j = 0; j <= C; j++) {
+      const u = (j / C) * 2 - 1, k = (i * (C + 1) + j) * 3;
+      uv[(i * (C + 1) + j) * 2] = (j / C) * 2; uv[(i * (C + 1) + j) * 2 + 1] = t * 3;
+      const wf = 1 - 0.68 * Math.pow(t, 1.1);                                       // narrows as it hangs
+      const edge = sstep(0.5, 1, t) * 0.34 * Math.pow(Math.abs(u), 1.5);            // corners ride up -> pointed lower edge
+      pos[k]     = 0.5 * u * wf + 0.08 * t * Math.sin(t * 3 + 1.0);
+      pos[k + 1] = t * (1 - edge) - 0.03 * t * Math.sin(u * 7);
+      pos[k + 2] = 0.10 * (0.3 + t) * Math.sin(u * 3.4 + 0.7) + 0.045 * Math.sin(u * 8.5 + t * 4 + 2);
+      const band = 0.5 + 0.5 * Math.sin(t * 20 + 1.6 * Math.sin(u * 2.4 + 0.5) + 0.8 * Math.sin(u * 6));
+      const w = sstep(0.25, 0.75, band);
+      const shade = (0.50 + 0.50 * sstep(0, 0.35, t)) * (0.80 + 0.20 * w);
+      baseTint(0.15 + 0.85 * w, tint);
+      col[k] = shade * tint[0]; col[k + 1] = shade * tint[1]; col[k + 2] = shade * tint[2];
+    }
+  }
+  const idx = [];
+  for (let i = 0; i < R; i++) for (let j = 0; j < C; j++) {
+    const a = i * (C + 1) + j, b = (i + 1) * (C + 1) + j, c = a + 1, d = b + 1;
+    idx.push(a, b, c, c, b, d);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+})();
+
+// Fine mineral grain, used only as a bump map so smooth-shaded shapes don't look like clay.
+// Stretched along the length of tall pieces it reads as natural flow streaking.
+function makeGrainTexture() {
+  const N = 128, cv = document.createElement('canvas'); cv.width = cv.height = N;
+  const ctx = cv.getContext('2d'), img = ctx.createImageData(N, N);
+  const tn = (x, y, per, ch) => {
+    const xi = Math.floor(x), yi = Math.floor(y), u = fade(x - xi), v = fade(y - yi);
+    const x0 = ((xi % per) + per) % per, x1 = (x0 + 1) % per, y0 = ((yi % per) + per) % per, y1 = (y0 + 1) % per;
+    return lerp(lerp(hash3(x0, y0, ch), hash3(x1, y0, ch), u), lerp(hash3(x0, y1, ch), hash3(x1, y1, ch), u), v);
+  };
+  for (let py = 0; py < N; py++) for (let px = 0; px < N; px++) {
+    let v = 0, amp = 0.5, tot = 0;
+    for (let o = 0; o < 4; o++) { const f = 4 << o; v += amp * tn(px / N * f, py / N * f, f, 80 + o); tot += amp; amp *= 0.6; }
+    const g = clamp(v / tot, 0, 1), i = (py * N + px) * 4;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = 255 * g; img.data[i + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  const tx = new THREE.CanvasTexture(cv);
+  tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
+  return tx;
+}
+const grainTex = makeGrainTexture();
+
+// Materials: faceted/rough, smooth, wet (glossy flowstone), and a two-sided one for drapery.
+const formMatSmooth = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, bumpMap: grainTex, bumpScale: 0.22, roughness: 0.70, metalness: 0 });
+const formMatWet    = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, bumpMap: grainTex, bumpScale: 0.12, roughness: 0.42, metalness: 0 });
+const formMatSheet  = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, bumpMap: grainTex, bumpScale: 0.20, roughness: 0.55, metalness: 0, side: THREE.DoubleSide });
+const SHAPE_MAT = { cone: formMat, straw: formMat, pencil: formMat, spire: formMatSmooth, tiered: formMatSmooth, carrot: formMatSmooth,
+                    column: formMatSmooth, candle: formMatWet, mound: formMatWet, drape: formMatSheet };
+
+/* ----------------------------------------------------------- WATER (MIRROR)
+ *  All pools sit on one shared water plane (y = WATER_Y) so a single planar
+ *  reflection render serves every pool.                                      */
+const reflRT = new THREE.WebGLRenderTarget(512, 512, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat });
+reflRT.texture.encoding = THREE.sRGBEncoding;
+reflRT.texture.generateMipmaps = false;
+const reflCam = new THREE.PerspectiveCamera();
+const texMatrix = new THREE.Matrix4();
+const waterMat = new THREE.ShaderMaterial({
+  side: THREE.DoubleSide,
+  uniforms: {
+    tReflect: { value: reflRT.texture }, textureMatrix: { value: texMatrix },
+    camPos: { value: new THREE.Vector3() }, lampPos: { value: new THREE.Vector3() }, time: { value: 0 },
+    fogColor: { value: FOG_COLOR.clone() }, fogDensity: { value: FOG_DENSITY },
+  },
+  vertexShader: `
+    uniform mat4 textureMatrix;
+    varying vec4 vProj; varying vec3 vWorld;
+    void main() {
+      vWorld = position;                               // pool vertices are authored in world space
+      vProj = textureMatrix * vec4(position, 1.0);
+      gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: `
+    uniform sampler2D tReflect; uniform vec3 camPos, lampPos, fogColor; uniform float time, fogDensity;
+    varying vec4 vProj; varying vec3 vWorld;
+    void main() {
+      vec3 V = normalize(camPos - vWorld);
+      // barely-there ripple: the pool is "still"
+      vec2 rip = vec2(sin(vWorld.x * 4.1 + time * 0.55) + sin(vWorld.z * 3.3 - time * 0.42),
+                      cos(vWorld.z * 4.7 + time * 0.47) + sin(vWorld.x * 3.7 - time * 0.31)) * 0.0006;
+      vec4 uv = vProj; uv.xy += rip * uv.w;
+      vec3 refl = pow(texture2DProj(tReflect, uv).rgb, vec3(2.2));      // RT is sRGB-encoded -> linear
+      float fres = 0.30 + 0.70 * pow(1.0 - clamp(V.y, 0.0, 1.0), 3.0);
+      vec3 deep = vec3(0.004, 0.003, 0.004);
+      vec3 col = mix(deep, refl * 1.9, fres * 0.95);
+      // soft glint of the lantern on the surface
+      vec3 L = normalize(lampPos - vWorld);
+      float glint = pow(max(dot(reflect(-L, vec3(0.0, 1.0, 0.0)), V), 0.0), 90.0);
+      col += vec3(1.0, 0.72, 0.42) * glint * 0.55 / (1.0 + 0.02 * dot(lampPos - vWorld, lampPos - vWorld));
+      float d = length(camPos - vWorld);
+      col = mix(col, fogColor, 1.0 - exp(-fogDensity * fogDensity * d * d));
+      gl_FragColor = vec4(col, 1.0);
+      #include <encodings_fragment>
+    }`,
+});
+
+function updateReflection() {
+  const p = camera.position;
+  const tgt = camTarget;
+  reflCam.fov = camera.fov; reflCam.aspect = camera.aspect; reflCam.near = 0.1; reflCam.far = camera.far;
+  reflCam.updateProjectionMatrix();
+  reflCam.position.set(p.x, 2 * WATER_Y - p.y, p.z);
+  reflCam.up.set(0, -1, 0);
+  reflCam.lookAt(tgt.x, 2 * WATER_Y - tgt.y, tgt.z);
+  reflCam.updateMatrixWorld();
+  texMatrix.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1);
+  texMatrix.multiply(reflCam.projectionMatrix).multiply(reflCam.matrixWorldInverse);
+}
+
+/* ------------------------------------------------------- SEGMENT (a chunk)
+ *  A segment covers s0 .. s0+SEG_LEN. Its geometry is built incrementally by a
+ *  generator so the work is spread across frames (no hitching while walking).  */
+const _o = { lat: 0, y: 0, nx: 0, ny: 0 };
+const _v = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3(), _n = new THREE.Vector3(), _c = new THREE.Vector3();
+const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _qt = new THREE.Quaternion(), _qf = new THREE.Quaternion(), _qy = new THREE.Quaternion();
+const _sc = new THREE.Vector3(), _col = new THREE.Color(), _e = new THREE.Euler();
+const UP = new THREE.Vector3(0, 1, 0), AX = new THREE.Vector3(1, 0, 0);
+_qf.setFromAxisAngle(AX, Math.PI);           // flip: stalactites hang tip-down
+
+class Segment {
+  constructor(index) {
+    this.index = index;
+    this.s0 = index * CFG.SEG_LEN;
+    this.s1 = this.s0 + CFG.SEG_LEN;
+    this.group = new THREE.Group();
+    this.group.name = 'segment_' + index;
+    this.geos = [];
+    this.pools = [];           // pool plans touching this segment: { s, l, rl, rs, k, side, big? }
+    this.poolMeshes = [];
+    this.forms = [];
+    this.dead = false; this.ready = false;
+    scene.add(this.group);
+  }
+
+  // Pools touching this segment: big chamber ponds (shared with neighbours) or, in a corridor, maybe a small puddle.
+  planPools(rng) {
+    this.pools = [];
+    const c0 = Math.floor(this.s0 / CFG.CELL);
+    for (let i = c0 - 1; i <= c0 + 1; i++) {
+      const p = chamberPond(i);
+      if (p && p.s + 2.2 * p.rs > this.s0 && p.s - 2.2 * p.rs < this.s1) this.pools.push(p);
+    }
+    const small = planSmallPool(this.s0, rng);
+    if (small && !this.pools.length) this.pools.push(small);
+  }
+
+  *build() {
+    const rng = mulberry32(hash3(this.index, 0, 777) * 4294967296);
+    this.planPools(rng);
+    yield;
+    yield* this.buildArch();     if (this.dead) return; yield;
+    yield* this.buildFloor();    if (this.dead) return; yield;
+    this.buildPool();            if (this.dead) return; yield;
+    yield* this.buildFormations(rng, true);
+    yield* this.buildFormations(rng, false);
+    this.ready = true;
+  }
+
+  // widest the space gets in this segment (both walls, ft) — sets mesh resolution
+  spanMax() {
+    let span = 0;
+    for (let u = 0; u <= 4; u++) { const s = this.s0 + u * CFG.SEG_LEN / 4; span = Math.max(span, wallHalfWidth(s, -1) + wallHalfWidth(s, 1)); }
+    return span;
+  }
+
+  /* --- vault: walls + arching ceiling --------------------------------- */
+  *buildArch() {
+    const RS = 64, CS = Math.round(clamp(84 + 1.7 * Math.max(0, this.spanMax() - 32), 84, 190));   // rows along the path, columns around the vault
+    const ds = CFG.SEG_LEN / RS;
+    const pos = new Float32Array((RS + 1) * (CS + 1) * 3), nor = new Float32Array(pos.length), uv = new Float32Array((RS + 1) * (CS + 1) * 2), col = new Float32Array(pos.length);
+    const P = (s, phi, out) => { archLocal(s, phi, _o); return toWorld(s, _o.lat, _o.y, out); };
+    const pools = this.pools;
+    for (let i = 0; i <= RS; i++) {
+      if (i % 2 === 0) { yield; if (this.dead) return; }
+      const s = this.s0 + i * ds;
+      const fr = frame(s), fx = fr.x, ref = ceilH(s) * 0.3;
+      let arc = 0, pl = 0, py = 0;
+      for (let j = 0; j <= CS; j++) {
+        const phi = (j / CS) * Math.PI;
+        P(s, phi, _v);
+        const lt = _o.lat, yy = _o.y, k = i * (CS + 1) + j;
+        pos[k * 3] = _v.x; pos[k * 3 + 1] = _v.y; pos[k * 3 + 2] = _v.z;
+        // analytic normal by finite differences of the same pure function -> identical across segment seams
+        const e = 0.3, ep = 0.012;
+        P(s + e, phi, _a).sub(P(s - e, phi, _b));                 // dP/ds
+        const pa = Math.min(Math.PI, phi + ep), pb = Math.max(0, phi - ep);
+        P(s, pa, _b); P(s, pb, _c); _b.sub(_c);                    // dP/dphi
+        _n.crossVectors(_a, _b).normalize();
+        // must face into the cave: reference point = mid-height on the centre-line
+        _a.set(fx - _v.x, ref - _v.y, -s - _v.z);
+        if (_n.dot(_a) < 0) _n.negate();
+        nor[k * 3] = _n.x; nor[k * 3 + 1] = _n.y; nor[k * 3 + 2] = _n.z;
+        // uv (world-scale, continuous across segments)
+        if (j > 0) arc += Math.hypot(lt - pl, yy - py);
+        pl = lt; py = yy;
+        uv[k * 2] = s / 13; uv[k * 2 + 1] = arc / 13;
+        // slow mineral staining + long vertical drip streaks, so huge chamber walls aren't one flat tone
+        const st = 0.5 + 0.5 * vn2(s / 22, arc / 14, 90), dr = vn2(s / 5, arc / 70, 91), red = sstep(0.55, 1.0, st);
+        const kk = 0.80 + 0.20 * (1 - sstep(0.5, 0.95, st)) + 0.08 * dr;
+        // wet seep streaks running down to a nearby pool's own wall — darkest and coolest near the floor
+        let seep = 0;
+        for (let pi = 0; pi < pools.length; pi++) {
+          const p = pools[pi];
+          if (Math.sign(lt) !== p.side) continue;
+          const dS = Math.abs(s - p.s), reach = p.big ? p.rs * 1.4 : p.rs * 2.4 + 5;
+          if (dS > reach) continue;
+          const nearBase = 1 - sstep(0, p.big ? 15 : 7, yy);
+          const alongFall = 1 - sstep(0, reach, dS);
+          const mottled = 0.55 + 0.45 * (0.5 + 0.5 * vn2(s / 3.2, yy / 2.2, 95));
+          const v = nearBase * alongFall * mottled;
+          if (v > seep) seep = v;
+        }
+        col[k * 3]     = kk * (1 + 0.10 * red) * (1 - 0.16 * seep);
+        col[k * 3 + 1] = kk * (1 - 0.05 * red) * (1 - 0.08 * seep);
+        col[k * 3 + 2] = kk * (1 - 0.18 * red) * (1 + 0.12 * seep);
+      }
+    }
+    const idx = [];
+    for (let i = 0; i < RS; i++) for (let j = 0; j < CS; j++) {
+      const a = i * (CS + 1) + j, b = (i + 1) * (CS + 1) + j, c = a + 1, d = b + 1;
+      idx.push(a, c, b, b, c, d);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.setIndex(idx);
+    g.computeBoundingSphere();
+    this.geos.push(g);
+    const mesh = new THREE.Mesh(g, wallMat); mesh.name = 'vault';
+    this.group.add(mesh);
+  }
+
+  /* --- floor: flat 6-ft path, rubble toward the walls, pool basins ----- */
+  *buildFloor() {
+    // Columns are packed densely around the path (crisp path edge, pond shores) and more loosely toward the walls.
+    const RS = 80, CS = Math.round(clamp(96 + 1.6 * Math.max(0, this.spanMax() - 32), 96, 230));
+    const nA = Math.round(CS * 0.3), nC = CS - 2 * nA;
+    const ds = CFG.SEG_LEN / RS;
+    const N = (RS + 1) * (CS + 1);
+    const pos = new Float32Array(N * 3), nor = new Float32Array(N * 3), uv = new Float32Array(N * 2), colr = new Float32Array(N * 3);
+    const pathCol = new THREE.Color(1.0, 0.80, 0.62), rockCol = new THREE.Color(0.57, 0.46, 0.41);
+    const pools = this.pools;
+    const Hf = (s, l) => floorH(s, l, pools);
+    for (let i = 0; i <= RS; i++) {
+      if (i % 3 === 0) { yield; if (this.dead) return; }
+      const s = this.s0 + i * ds;
+      const lL = floorEdge(s, -1) - 0.25, lR = floorEdge(s, 1) + 0.25;      // tuck the edges into the wall
+      const bL = Math.max(lL, -(pathHalf(s) + 6)), bR = Math.min(lR, pathHalf(s) + 6);
+      for (let j = 0; j <= CS; j++) {
+        const l = j <= nA ? lerp(lL, bL, j / nA) : j <= nA + nC ? lerp(bL, bR, (j - nA) / nC) : lerp(bR, lR, (j - nA - nC) / nA);
+        const y = Hf(s, l);
+        toWorld(s, l, y, _v);
+        const k = i * (CS + 1) + j;
+        pos[k * 3] = _v.x; pos[k * 3 + 1] = _v.y; pos[k * 3 + 2] = _v.z;
+        // normal by finite differences (world-space) of the pure function
+        const e = 0.25;
+        toWorld(s + e, l, Hf(s + e, l), _a).sub(toWorld(s - e, l, Hf(s - e, l), _b));
+        toWorld(s, l + e, Hf(s, l + e), _b).sub(toWorld(s, l - e, Hf(s, l - e), _c));
+        _n.crossVectors(_a, _b).normalize(); if (_n.y < 0) _n.negate();
+        nor[k * 3] = _n.x; nor[k * 3 + 1] = _n.y; nor[k * 3 + 2] = _n.z;
+        uv[k * 2] = l / 11; uv[k * 2 + 1] = s / 11;
+        // the path itself: compacted, lighter, with a crisp 6 ft boundary
+        const w = sstep(pathHalf(s) - 0.12, pathHalf(s) + 0.12, Math.abs(l));
+        const vv = 0.88 + 0.24 * (0.5 + 0.5 * vn2(s / 0.9, l / 0.9, 43));
+        colr[k * 3]     = lerp(pathCol.r, rockCol.r, w) * vv;
+        colr[k * 3 + 1] = lerp(pathCol.g, rockCol.g, w) * vv;
+        colr[k * 3 + 2] = lerp(pathCol.b, rockCol.b, w) * vv;
+      }
+    }
+    const idx = [];
+    for (let i = 0; i < RS; i++) for (let j = 0; j < CS; j++) {
+      const a = i * (CS + 1) + j, b = (i + 1) * (CS + 1) + j, c = a + 1, d = b + 1;
+      idx.push(a, c, b, b, c, d);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    g.setAttribute('color', new THREE.BufferAttribute(colr, 3));
+    g.setIndex(idx);
+    g.computeBoundingSphere();
+    this.geos.push(g);
+    const mesh = new THREE.Mesh(g, floorMat); mesh.name = 'floor';
+    this.group.add(mesh);
+  }
+
+  /* --- still, reflecting water ------------------------------------------
+   *  A grid clipped to this segment's s-range, keeping quads whose corners fall inside the pond
+   *  outline.  The lateral grid depends only on the pond, so neighbouring segments join exactly. */
+  buildPool() {
+    for (const p of this.pools) {
+      const sA = Math.max(this.s0, p.s - p.rs * 1.25), sB = Math.min(this.s1, p.s + p.rs * 1.25);
+      if (sB <= sA) continue;
+      const nS = Math.max(2, Math.ceil((sB - sA) / clamp(p.rs / 14, 0.45, 2.6)));
+      const nL = Math.max(2, Math.ceil((p.rl * 2.5) / clamp(p.rl / 14, 0.35, 2.2)));
+      const l0 = p.l - p.rl * 1.25, dl = (p.rl * 2.5) / nL, dS = (sB - sA) / nS;
+      const V = (nS + 1) * (nL + 1), pos = new Float32Array(V * 3), inside = new Uint8Array(V);
+      for (let i = 0; i <= nS; i++) for (let j = 0; j <= nL; j++) {
+        const s = sA + i * dS, l = l0 + j * dl, k = i * (nL + 1) + j;
+        toWorld(s, l, WATER_Y, _v);
+        pos[k * 3] = _v.x; pos[k * 3 + 1] = WATER_Y; pos[k * 3 + 2] = _v.z;
+        inside[k] = poolD(p, s, l) < 1.1 ? 1 : 0;
+      }
+      const idx = [];
+      for (let i = 0; i < nS; i++) for (let j = 0; j < nL; j++) {
+        const a = i * (nL + 1) + j, b = a + nL + 1, c = a + 1, d = b + 1;
+        if (inside[a] | inside[b] | inside[c] | inside[d]) idx.push(a, c, b, b, c, d);
+      }
+      if (!idx.length) continue;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      g.setIndex(idx);
+      g.computeBoundingSphere();
+      this.geos.push(g);
+      const mesh = new THREE.Mesh(g, waterMat); mesh.name = 'pool';
+      mesh.userData.pool = p;
+      this.group.add(mesh);
+      this.poolMeshes.push(mesh);
+    }
+  }
+
+  /* --- stalactites (ceiling) & stalagmites (floor) ---------------------
+   *  A weighted mix of shape types (see SHAPE LIBRARY) plus a few "events" that drop many
+   *  pieces at once: straw patches, tooth patches, stalagmite clusters on flowstone
+   *  mounds, drapery, and floor-to-ceiling columns.
+   *  In chambers formations grow up to ~3.5x, the budget rises by half, and "giant" events add
+   *  monster columns, stalactites, drapery and mound-and-spire families sized for the dome.
+   *  Everything keeps the 6-ft path clear (lean margin included) and is deterministic
+   *  per segment.                                                                   */
+  *buildFormations(rng, hanging) {
+    const SL = CFG.SEG_LEN, bins = {};
+    const openAt = s => spaceAt(s).o;
+    const oMid = (openAt(this.s0) + openAt(this.s0 + SL / 2) + openAt(this.s1)) / 3;
+    const total = Math.round((hanging ? CFG.N_STALACTITE : CFG.N_STALAGMITE) * (1 - 0.40 * oMid));
+    const maxColumns = 2 + Math.round(2 * oMid);
+    let count = 0, columns = 0, patches = 0;      // count = non-straw pieces (the budget); patches = straw patches
+    const pools = this.pools;
+
+    const push = (shape, pos, quat, sx, sy, sz, col) => {
+      const b = bins[shape] || (bins[shape] = { mat: [], col: [], n: 0 });
+      if (shape !== 'straw') count++;
+      _m.compose(pos, quat, _sc.set(sx, sy, sz));
+      _m.toArray(b.mat, b.n * 16);
+      b.col.push(col.r, col.g, col.b);
+      b.n++;
+    };
+    // tip colour from the mineral-staining field, with per-piece brightness variation
+    const colorFor = (s, lat, bias) => {
+      mineralColor(s, lat, bias, (rng() - 0.5) * 0.32, _col);
+      return _col.multiplyScalar(0.42 + 0.40 * rng() * rng() + 0.10 * rng());
+    };
+    // random lean (<= tilt rad) and spin; flipped for hanging pieces:  R = tilt * flip * yaw
+    const orient = (flip, tilt) => {
+      const ta = rng() * TAU, tm = rng() * tilt;
+      _qt.setFromAxisAngle(_n.set(Math.cos(ta), 0, Math.sin(ta)), tm);
+      _qy.setFromAxisAngle(UP, rng() * TAU);
+      if (flip) _q.copy(_qf); else _q.identity();
+      return _q.premultiply(_qt).multiply(_qy);
+    };
+    const rndS = () => this.s0 + rng() * SL;
+    const rndSide = () => (rng() < 0.5 ? -1 : 1);
+    const choose = tbl => { let x = rng() * tbl.total; for (const e of tbl) { x -= e[0]; if (x < 0) return e[1]; } return tbl[tbl.length - 1][1]; };
+    const tbl = arr => { arr.total = arr.reduce((a, e) => a + e[0], 0); return arr; };
+    const grow = (o, gain) => 1 + o * 1.9 * gain * Math.pow(rng(), 1.8);          // size multiplier: only chambers grow big pieces
+
+    /* ============================ CEILING ============================ */
+    // ceiling point above lateral offset `lat` at s  (fills _o)
+    const ceilAt = (s, lat) => {
+      const side = lat < 0 ? -1 : 1, f = Math.abs(lat) / wallHalfWidth(s, side);
+      if (f >= 0.995) return false;
+      archLocal(s, side > 0 ? Math.acos(f) : Math.PI - Math.acos(f), _o);
+      return true;
+    };
+    const placeHang = (shape, s, lat, r, len, tilt, cb) => {
+      const side = lat < 0 ? -1 : 1, minLat = pathHalf(s) + 0.22 + r + len * tilt;       // let pieces lean in close to the path
+      if (Math.abs(lat) < minLat || !ceilAt(s, lat)) return false;
+      if (Math.abs(_o.lat) < minLat || Math.sign(_o.lat) !== side) return false;
+      len = Math.min(len, _o.y - floorH(s, _o.lat, pools) - 0.4); if (len < 0.3) return false;
+      const e = 0.2 + 0.95 * r * Math.abs(_o.nx), lt = _o.lat;                    // bury the base in the rock
+      toWorld(s, lt + _o.nx * e, _o.y + _o.ny * e, _v);
+      orient(true, tilt);
+      push(shape, _v, _q, r, len, r, colorFor(s, lt, cb));
+      return true;
+    };
+    const hangSingle = (shape, len, r, bias, cb, tilt, gain = 1) => {
+      const s = rndS(), side = rndSide(), W = wallHalfWidth(s, side), o = openAt(s), k = grow(o, gain);
+      len *= k; r *= Math.pow(k, 0.85);
+      const fmin = (pathHalf(s) + 0.22 + r + len * tilt) / W; if (fmin >= 0.985) return;
+      placeHang(shape, s, side * W * (fmin + (0.995 - fmin) * Math.pow(rng(), lerp(bias, 0.95, o))), r, len, tilt, cb);   // density biased toward the walls
+    };
+    // a sheet of drapery: hangs straight down, lies along the path direction (± jitter)
+    const placeDrape = (s, lat, w, len, cb) => {
+      const side = lat < 0 ? -1 : 1, minLat = pathHalf(s) + 0.22 + w * 0.5 + 0.3;
+      if (Math.abs(lat) < minLat || !ceilAt(s, lat)) return false;
+      if (Math.abs(_o.lat) < minLat || Math.sign(_o.lat) !== side) return false;
+      len = Math.min(len, _o.y - floorH(s, _o.lat, pools) - 0.5); if (len < 1.0) return false;
+      const e = 0.35 + 0.3 * w * Math.abs(_o.nx), lt = _o.lat;
+      toWorld(s, lt + _o.nx * e, _o.y + _o.ny * e, _v);
+      const f = frame(s), a = Math.atan2(-1 / f.n, f.dX / f.n) + (rng() - 0.5) * 1.0;
+      _a.set(Math.cos(a), 0, Math.sin(a)); _b.set(0, -1, 0); _c.crossVectors(_a, _b);
+      _m.makeBasis(_a, _b, _c); _q.setFromRotationMatrix(_m);
+      { const ta = rng() * TAU; _qt.setFromAxisAngle(_n.set(Math.cos(ta), 0, Math.sin(ta)), rng() * 0.06); }
+      _q.premultiply(_qt);
+      push('drape', _v, _q, w, len, w * 0.9, colorFor(s, lt, cb));
+      return true;
+    };
+    const drapery = () => {
+      const s = rndS(), side = rndSide(), W = wallHalfWidth(s, side), k = grow(openAt(s), 0.8);
+      placeDrape(s, side * W * (0.55 + 0.40 * rng()), (1.2 + 2.6 * rng()) * k, (1.6 + 5.5 * Math.pow(rng(), 1.4)) * k, 0.0);
+    };
+    // a dense little forest of soda straws, longest in the middle
+    const strawPatch = () => {
+      if (patches >= 12) return;
+      patches++;
+      const s = rndS(), side = rndSide(), W = wallHalfWidth(s, side);
+      const lat0 = side * (pathHalf(s) + 1.4 + (W - pathHalf(s) - 1.6) * Math.pow(rng(), 0.55));
+      const R = 0.8 + 1.8 * rng(), n = 8 + ((rng() * 22) | 0), maxLen = 0.9 + 2.6 * Math.pow(rng(), 1.5);
+      for (let k = 0; k < n; k++) {
+        const d = R * Math.sqrt(rng()), a = rng() * TAU, fall = 1 - 0.6 * d / R;
+        placeHang('straw', s + Math.cos(a) * d, lat0 + Math.sin(a) * d, 0.022 + 0.026 * rng(), (0.4 + maxLen * Math.pow(rng(), 0.8)) * fall, 0.02, -0.25);
+      }
+    };
+    // a patch of short stubby "teeth" — cones with the odd knuckle
+    const teethPatch = () => {
+      const s = rndS(), side = rndSide(), W = wallHalfWidth(s, side);
+      const lat0 = side * (pathHalf(s) + 1.6 + (W - pathHalf(s) - 1.8) * Math.pow(rng(), 0.5));
+      const R = 1.0 + 1.6 * rng(), n = 4 + ((rng() * 6) | 0);
+      for (let k = 0; k < n; k++) {
+        const d = R * Math.sqrt(rng()), a = rng() * TAU;
+        const len = (0.5 + 2.6 * Math.pow(rng(), 1.4)) * (1 - 0.5 * d / R), r = Math.min(0.12 + len * 0.14 * (0.6 + rng()), 0.6);
+        placeHang(rng() < 0.35 ? 'candle' : 'cone', s + Math.cos(a) * d, lat0 + Math.sin(a) * d, r, len, 0.10, 0.1);
+      }
+    };
+    // chamber giants: huge curtains and long carrots/cones hung high in the dome
+    const giantHang = () => {
+      const s = rndS(); if (openAt(s) < 0.45) return;
+      const side = rndSide(), W = wallHalfWidth(s, side), lat = side * W * (0.25 + 0.70 * rng()), p = rng();
+      if (p < 0.30) placeDrape(s, lat, 4 + 8 * rng(), 8 + 16 * Math.pow(rng(), 1.3), 0.0);
+      else { const len = 9 + 22 * Math.pow(rng(), 1.5); placeHang(p < 0.85 ? 'carrot' : 'cone', s, lat, 1.2 + len * 0.10 * (0.6 + 0.8 * rng()), len, 0.03, 0.05); }
+    };
+    const T_HANG = tbl([
+      [0.32, () => { const len = 0.5 + 8.5 * Math.pow(rng(), 2.7); hangSingle('cone', len, Math.min(0.22 + len * 0.15 * (0.5 + rng()), 1.6), 0.5, 0.0, TILT, 0.5); }],
+      [0.18, () => { const len = 1.5 + 7.0 * Math.pow(rng(), 2.0); hangSingle('carrot', len, Math.min(0.18 + len * 0.075 * (0.6 + 0.8 * rng()), 1.3), 0.5, 0.05, 0.05); }],
+      [0.05, () => { const len = 0.5 + 1.8 * Math.pow(rng(), 1.3); hangSingle('candle', len, 0.28 + 0.22 * rng() + len * 0.10, 0.6, 0.15, 0.05); }],
+      [0.08, () => { const len = 1.5 + 8.0 * Math.pow(rng(), 2.0); hangSingle('pencil', len, 0.05 + 0.04 * rng() + len * 0.006, 0.5, -0.15, 0.03, 0.35); }],
+      [0.035, drapery],
+      [0.10, strawPatch],
+      [0.08, teethPatch],
+      [0.03, giantHang],
+    ]);
+
+    /* ============================= FLOOR ============================= */
+    const placeMite = (shape, s, lat, r, len, tilt, cb, sink) => {
+      const side = lat < 0 ? -1 : 1, W = wallHalfWidth(s, side), a = Math.abs(lat);
+      if (a < pathHalf(s) + 0.22 + r + len * tilt || a > W - CFG.ROUGH - r - 0.1 - 3 * openAt(s)) return false;
+      if (inPool(pools, s, lat, 0.6 + 0.7 * r)) return false;                        // no rock standing in the water
+      toWorld(s, lat, floorH(s, lat, pools) - sink, _v);
+      orient(false, tilt);
+      push(shape, _v, _q, r, len, r, colorFor(s, lat, cb));
+      return true;
+    };
+    const miteSingle = (shape, len, r, bias, cb, tilt, sink, gain = 1) => {
+      const s = rndS(), side = rndSide(), W = wallHalfWidth(s, side), o = openAt(s), k = grow(o, gain * 0.92);
+      len *= k; r *= Math.pow(k, 0.85);
+      const minLat = pathHalf(s) + 0.22 + r + len * tilt, maxLat = W - CFG.ROUGH - r - 0.1 - 3 * o;
+      if (maxLat <= minLat + 0.2) return;
+      const span = (o > 0.25 && rng() < 0.22) ? Math.min(maxLat, minLat + 14 + 12 * rng()) : maxLat;    // in chambers a fifth of them stay near the path
+      placeMite(shape, s, side * (minLat + (span - minLat) * Math.pow(rng(), bias)), r, len, tilt, cb, sink);
+    };
+    // floor-to-ceiling column: hourglass with vertical flutes; in chambers they're pillars several ft thick
+    const column = () => {
+      if (columns >= maxColumns) return;
+      const s = rndS(), side = rndSide(), W = wallHalfWidth(s, side), o = openAt(s);
+      const r = (0.45 + 0.6 * rng()) * (1 + 3.2 * o * rng());
+      const lat = side * W * (lerp(0.5, 0.28, o) + 0.4 * rng()), minLat = pathHalf(s) + 0.5 + r * 1.1;
+      if (Math.abs(lat) < minLat || Math.abs(lat) > W - CFG.ROUGH - r - 0.3 - 3 * o || !ceilAt(s, lat)) return;
+      const l = _o.lat; if (Math.sign(l) !== side || Math.abs(l) < minLat) return;
+      if (inPool(pools, s, l, 1.0 + 0.9 * r)) return;
+      const fh = floorH(s, l, pools) - 0.25;
+      const e = 0.4 + Math.min(3, 1.2 * r * Math.abs(_o.nx) / Math.max(0.2, Math.abs(_o.ny)));   // bury the top on sloping rock
+      const h = _o.y + e - fh; if (h < 4) return;
+      toWorld(s, l, fh, _v);
+      _q.setFromAxisAngle(UP, rng() * TAU);
+      push('column', _v, _q, r, h, r, colorFor(s, l, 0.10));
+      columns++;
+    };
+    // a family of stalagmites growing from one flowstone mound, tallest in the middle
+    const R_OF = { spire: len => 0.20 + len * 0.05, candle: len => 0.20 + len * 0.12, cone: len => 0.16 + len * 0.14, tiered: len => 0.40 + len * 0.08, pencil: len => 0.05 + len * 0.015 };
+    const cluster = (k = 1, sAt, latAt) => {
+      const s = sAt === undefined ? rndS() : sAt, o = openAt(s);
+      let lat0;
+      if (latAt === undefined) {
+        const side = rndSide(), span = wallHalfWidth(s, side) - pathHalf(s) - 3.2 - 3 * o;
+        if (span < 1) return;
+        const reach = (o > 0.25 && rng() < 0.22) ? Math.min(span, 16 + 10 * rng()) : span;
+        lat0 = side * (pathHalf(s) + 1.6 + reach * Math.pow(rng(), 0.7));
+      } else lat0 = latAt;
+      const R = (0.9 + 1.5 * rng()) * Math.pow(k, 0.9), n = Math.round((4 + rng() * 7) * Math.sqrt(k)), fam = rng();
+      placeMite('mound', s, lat0, R * 0.62, R * (0.45 + 0.30 * rng()), 0, 0.25, 0.05);
+      for (let i = 0; i < n; i++) {
+        const d = R * Math.sqrt(rng()), a = rng() * TAU, near = 1 - d / R, pk = rng();
+        const len = (0.45 + (0.6 + 4.2 * Math.pow(rng(), 1.3)) * (0.35 + 0.65 * near)) * k;
+        const shape = fam < 0.4 ? (pk < 0.65 ? 'spire' : 'candle')
+                    : fam < 0.75 ? (pk < 0.6 ? 'candle' : 'cone')
+                    : (pk < 0.4 ? 'spire' : pk < 0.7 ? 'tiered' : 'pencil');
+        placeMite(shape, s + Math.cos(a) * d, lat0 + Math.sin(a) * d, R_OF[shape](len), len, 0.12, 0.2, 0.18);
+      }
+    };
+    // chamber giants: towering spires, broad "fried-egg" stacks, big mound-and-spire families
+    const giantMite = () => {
+      const s = rndS(); if (openAt(s) < 0.45) return;
+      const side = rndSide(), W = wallHalfWidth(s, side), minLat = pathHalf(s) + 6, maxLat = W * 0.85 - 4;
+      if (maxLat < minLat + 4) return;
+      const lat = side * (minLat + (maxLat - minLat) * rng()), p = rng();
+      if (p < 0.35) cluster(2.2 + 2.0 * rng(), s, lat);
+      else if (p < 0.70) { const len = 8 + 12 * rng(); placeMite('spire', s, lat, 0.9 + len * 0.05, len, 0.02, 0.2, 0.3); }
+      else { const len = 5 + 7 * rng(); placeMite('tiered', s, lat, 2.0 + len * 0.2, len, 0.02, 0.15, 0.3); }
+    };
+    const T_MITE = tbl([
+      [0.26, () => { const len = 0.4 + 5.0 * Math.pow(rng(), 2.8); miteSingle('cone', len, Math.min(0.22 + len * 0.17 * (0.5 + rng()), 1.6), 0.45, 0.10, TILT, 0.18, 0.5); }],
+      [0.10, () => { const len = 2.5 + 6.5 * Math.pow(rng(), 1.6); miteSingle('spire', len, 0.28 + len * 0.045 * (0.7 + 0.6 * rng()), 0.5, 0.20, 0.04, 0.18); }],
+      [0.05, () => { const len = 1.2 + 3.5 * rng(); miteSingle('tiered', len, 0.6 + 0.5 * rng() + len * 0.08, 0.5, 0.15, 0.03, 0.18); }],
+      [0.10, () => { const len = 0.8 + 2.6 * Math.pow(rng(), 1.3); miteSingle('candle', len, 0.3 + 0.35 * rng() + len * 0.10, 0.5, 0.30, 0.05, 0.18); }],
+      [0.06, () => { const r = 0.4 + 0.6 * rng(); miteSingle('mound', r * (0.5 + 0.4 * rng()), r, 0.5, 0.30, 0, 0.05); }],
+      [0.08, () => { const len = 1.0 + 4.5 * Math.pow(rng(), 1.5); miteSingle('pencil', len, 0.06 + 0.06 * rng() + len * 0.012, 0.5, -0.10, 0.04, 0.18, 0.35); }],
+      [0.18, () => cluster()],
+      [0.014, column],
+      [0.025, giantMite],
+    ]);
+
+    const events = hanging ? T_HANG : T_MITE;
+    for (let attempt = 0; attempt < total * 2 && count < total; attempt++) {
+      if (attempt % 40 === 0) { yield; if (this.dead) return; }
+      choose(events)();
+    }
+
+    for (const key in bins) {
+      const b = bins[key]; if (!b.n) continue;
+      const mesh = new THREE.InstancedMesh(SHAPES[key], SHAPE_MAT[key], b.n);
+      mesh.frustumCulled = false;                 // instanced bounds are not per-instance in r128
+      mesh.name = (hanging ? 'hang_' : 'rise_') + key;
+      mesh.instanceMatrix.array.set(b.mat);
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(b.col), 3);
+      this.group.add(mesh);
+      this.forms.push(mesh);
+    }
+  }
+
+  dispose() {
+    this.dead = true;
+    scene.remove(this.group);
+    for (const g of this.geos) g.dispose();
+    for (const m of this.forms) if (m.dispose) m.dispose();      // shared shape geometries & materials live for the whole session
+    this.geos.length = 0; this.forms.length = 0;
+  }
+}
+
+/* ------------------------------------------------ INFINITE STREAMING LOGIC */
+const segments = [];              // ordered by index
+const jobs = [];                  // pending incremental builds
+let frontierIndex = null;         // index of the last segment that has been queued
+
+function queueSegment(index) {
+  const seg = new Segment(index);
+  segments.push(seg);
+  jobs.push({ seg, gen: seg.build() });
+}
+function pumpJobs(budgetMs) {
+  const t0 = performance.now();
+  while (jobs.length && performance.now() - t0 < budgetMs) {
+    const j = jobs[0];
+    if (j.seg.dead) { jobs.shift(); continue; }
+    const r = j.gen.next();
+    if (r.done) jobs.shift();
+  }
+}
+function updateStreaming(s) {
+  if (frontierIndex === null) frontierIndex = Math.floor((s - CFG.TRAIL) / CFG.SEG_LEN) - 1;
+  // APPEND: as the camera approaches the end of the last generated segment, generate the next one.
+  while ((frontierIndex + 1) * CFG.SEG_LEN - s < CFG.AHEAD) { frontierIndex++; queueSegment(frontierIndex); }
+  // DESTROY: trailing segments that are far behind.
+  while (segments.length && segments[0].s1 < s - CFG.TRAIL) segments.shift().dispose();
+}
+function resetWorld() {
+  while (segments.length) segments.shift().dispose();
+  jobs.length = 0; frontierIndex = null;
+  cellCache.clear(); pondCache.clear(); _spS = NaN; for (const o of _fr) o.s = NaN;      // everything derives from SEED
+}
+
+/* ------------------------------------------------------------ CAMERA / WALK */
+let sCam = 0, speedMul = 1, paused = false, distWalked = 0;
+const camTarget = new THREE.Vector3();
+
+/* Gaze & headlamp.
+ *  The camera follows the path, but its gaze drifts (yaw / pitch): barely at all in passages, widely in
+ *  chambers, where it sweeps up into the dome and out over the water.  The headlamp beam sits a little off
+ *  the view axis so it seems to be *searched* around.  Move the mouse to aim the beam yourself.           */
+const gaze = { yaw: 0, pitch: 0 }, beam = { yaw: 0, pitch: 0 };
+let lookOpen = 0, lampOn = true, lampLevel = 1, roam = true, pointer = null, manualUntil = 0, gazeSet = null, beamSet = null;
+const wob = (x, ch) => clamp(vn1(x, ch) * 1.6, -1, 1);                 // value noise, stretched toward its extremes
+const openNear = s => 0.5 * spaceAt(s).o + 0.5 * spaceAt(s + 35).o;     // openness here, blended with a peek ahead
+function snapLook() { lookOpen = openNear(sCam); gaze.yaw = gaze.pitch = beam.yaw = beam.pitch = 0; }
+function updateGaze(now, dt) {
+  const t = now * 0.001;
+  lookOpen += (openNear(sCam) - lookOpen) * (1 - Math.exp(-dt * 1.2));
+  const amp = 0.14 + 0.86 * lookOpen;
+  const manual = pointer !== null && now < manualUntil;
+  let gy = 0, gp = 0, by, bp;
+  // don't stare into a wall that is close on one side (lopsided chambers): squeeze the yaw range toward the open side
+  const room = side => 0.3 + 0.7 * clamp((wallHalfWidth(sCam + 8, side) - pathHalf(sCam + 8) - 5) / 14, 0, 1);
+  const rL = room(-1), rR = room(1), yawLim = y => y * (y > 0 ? rR : rL);
+  if (roam) { gy = yawLim(0.50 * amp * wob(t * 0.11, 61)); gp = amp * (0.10 + 0.34 * wob(t * 0.085, 62)); }
+  if (manual) {
+    const th = Math.tan(THREE.MathUtils.degToRad(CFG.HFOV) / 2);
+    by = Math.atan(pointer.x * th); bp = Math.atan(pointer.y * th / camera.aspect);
+    gy *= 0.3; gp *= 0.3;
+  } else { by = yawLim(amp * 0.36 * wob(t * 0.29, 63)); bp = amp * 0.26 * wob(t * 0.23, 64) + 0.03; }
+  if (gazeSet) { gy = gazeSet[0]; gp = gazeSet[1]; }
+  if (beamSet) { by = beamSet[0]; bp = beamSet[1]; }
+  const kg = 1 - Math.exp(-dt * 1.1), kb = 1 - Math.exp(-dt * (manual ? 7 : 2.2));
+  gaze.yaw += (gy - gaze.yaw) * kg; gaze.pitch += (gp - gaze.pitch) * kg;
+  beam.yaw += (by - beam.yaw) * kb; beam.pitch += (bp - beam.pitch) * kb;
+  lampLevel += ((lampOn ? 1 : 0) - lampLevel) * (1 - Math.exp(-dt * 6));
+}
+function updateCamera() {
+  const x = pathX(sCam);
+  camera.position.set(x, CFG.EYE_HEIGHT, -sCam);               // eye level, centred on the 6-ft path
+  // look-at: the path centre, at eye level, exactly LOOK_AHEAD ft (straight-line) ahead
+  // (solved by bisection on the along-path parameter so the straight-line distance is exactly LOOK_AHEAD)
+  let lo = 0, hi = CFG.LOOK_AHEAD, d = hi;
+  for (let i = 0; i < 40; i++) {
+    d = (lo + hi) / 2;
+    const dx = pathX(sCam + d) - x;
+    if (Math.hypot(dx, d) < CFG.LOOK_AHEAD) lo = d; else hi = d;
+  }
+  // …then turn the gaze off the path direction by (gaze.yaw, gaze.pitch)
+  const h = Math.atan2(pathX(sCam + d) - x, d) + gaze.yaw, cp = Math.cos(gaze.pitch), L = CFG.LOOK_AHEAD;
+  camTarget.set(x + L * Math.sin(h) * cp, CFG.EYE_HEIGHT + L * Math.sin(gaze.pitch), -sCam - L * Math.cos(h) * cp);
+  camera.lookAt(camTarget);
+  camera.updateMatrixWorld(true);
+}
+function updateLamp(now) {
+  _v.set(Math.sin(beam.yaw) * Math.cos(beam.pitch), Math.sin(beam.pitch), -Math.cos(beam.yaw) * Math.cos(beam.pitch)).multiplyScalar(40);
+  camera.localToWorld(_v);
+  headlamp.target.position.copy(_v); headlamp.target.updateMatrixWorld();
+  _a.set(0, 0.3, -0.2); camera.localToWorld(_a); headlamp.position.copy(_a);      // on the forehead, a touch above the eyes
+  headlamp.intensity = lerp(HEAD_PASSAGE, HEAD_CHAMBER, lookOpen) * lampLevel * (1 + 0.012 * Math.sin(now * 0.017));
+}
+// Chambers are darker (less ambient, thinner fog) so the beam does the revealing.
+function updateAtmosphere() {
+  hemi.intensity = lerp(0.55, 0.13, lookOpen);
+  scene.fog.density = lerp(FOG_DENSITY, FOG_CHAMBER, lookOpen);
+  waterMat.uniforms.fogDensity.value = scene.fog.density;
+}
+
+/* ------------------------------------------------------------------- INPUT */
+const hud = document.getElementById('hud'), stats = document.getElementById('stats');
+const dialogWrap = document.getElementById('dialogWrap');
+let showStats = true, aimEnabled = true, dialogOpen = false, pausedBeforeDialog = false;
+renderer.domElement.classList.toggle('no-aim', !aimEnabled);
+function setAim(on) {
+  aimEnabled = !!on;
+  renderer.domElement.classList.toggle('no-aim', !aimEnabled);
+  if (!aimEnabled) { pointer = null; }               // drop any manual override — beam falls back to roaming
+}
+function setDialog(open) {
+  dialogOpen = !!open;
+  dialogWrap.classList.toggle('open', dialogOpen);
+  if (dialogOpen) { pausedBeforeDialog = paused; paused = true; }
+  else { paused = pausedBeforeDialog; }
+}
+window.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyI') { setDialog(!dialogOpen); e.preventDefault(); return; }
+  if (e.code === 'Escape' && dialogOpen) { setDialog(false); e.preventDefault(); return; }
+  if (e.code === 'Space') { paused = !paused; e.preventDefault(); }
+  else if (e.code === 'ArrowUp' || e.code === 'KeyW') speedMul = Math.min(5, +(speedMul + 0.25).toFixed(2));
+  else if (e.code === 'ArrowDown' || e.code === 'KeyS') speedMul = Math.max(0.25, +(speedMul - 0.25).toFixed(2));
+  else if (e.code === 'KeyL') lampOn = !lampOn;
+  else if (e.code === 'KeyM') setAim(!aimEnabled);
+  else if (e.code === 'KeyG') roam = !roam;
+  else if (e.code === 'KeyH') { showStats = !showStats; stats.style.display = showStats ? '' : 'none'; hud.classList.toggle('faded'); }
+  else if (e.code === 'KeyR') { SEED = (Math.random() * 1e9) | 0; resetWorld(); updateStreaming(sCam); pumpJobs(1e9); }
+});
+window.addEventListener('pointermove', e => {                 // aim the headlamp with the mouse (returns to roaming after a few seconds)
+  if (!aimEnabled) return;
+  pointer = { x: (e.clientX / window.innerWidth) * 2 - 1, y: -((e.clientY / window.innerHeight) * 2 - 1) };
+  manualUntil = performance.now() + 3500;
+});
+dialogWrap.addEventListener('click', e => { if (e.target === dialogWrap) setDialog(false); });
+window.addEventListener('resize', () => {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  applyFov();
+  const px = renderer.getPixelRatio();
+  reflRT.setSize(Math.max(256, Math.floor(window.innerWidth * px * 0.5)), Math.max(256, Math.floor(window.innerHeight * px * 0.5)));
+});
+setTimeout(() => hud.classList.add('faded'), 9000);
+
+/* ---------------------------------------------------------------- RENDER */
+const setPoolsVisible = v => { for (const sg of segments) for (const m of sg.poolMeshes) m.visible = v; };
+function renderFrame(now) {
+  updateCamera();
+  updateLamp(now);
+  updateAtmosphere();
+  waterMat.uniforms.camPos.value.copy(camera.position);
+  lantern.getWorldPosition(waterMat.uniforms.lampPos.value);
+  waterMat.uniforms.time.value = now * 0.001;
+  lantern.intensity = 2.3 * (1 - 0.40 * lookOpen) * (1 + 0.025 * Math.sin(now * 0.011) + 0.02 * Math.sin(now * 0.0271));
+
+  // planar reflection — only when a finished pool lies in view range ahead
+  let poolsNear = false;
+  scan: for (const sg of segments) for (const m of sg.poolMeshes) {
+    const p = m.userData.pool;
+    if (p.s + p.rs * 1.3 > sCam - 6 && p.s - p.rs * 1.3 < sCam + 150) { poolsNear = true; break scan; }
+  }
+  if (poolsNear) {
+    updateReflection();
+    setPoolsVisible(false);
+    clipPlane.constant = -WATER_Y;
+    renderer.setRenderTarget(reflRT);
+    renderer.render(scene, reflCam);
+    renderer.setRenderTarget(null);
+    clipPlane.constant = 1e5;
+    setPoolsVisible(true);
+  }
+  renderer.render(scene, camera);
+}
+
+let last = performance.now(), statT = 0;
+function tick(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (!paused) {
+    const f = frame(sCam);
+    const ds = (CFG.WALK_SPEED * speedMul * dt) / f.n;          // ft of arc length along the winding path
+    sCam += ds; distWalked += CFG.WALK_SPEED * speedMul * dt;
+  }
+  updateStreaming(sCam);
+  pumpJobs(jobs.length > 2 ? 9 : 5);                            // spread generation over frames (a little faster when far behind)
+  updateGaze(now, dt);
+  renderFrame(now);
+  if (showStats && now - statT > 250) {
+    statT = now;
+    stats.textContent = `${Math.round(distWalked).toLocaleString()} ft walked · segments ${segments.length} (${jobs.length} building) · space ${Math.round(lookOpen * 100)}% · speed ${speedMul.toFixed(2)}×${paused ? ' · paused' : ''}${lampOn ? '' : ' · lamp off'}`;
+  }
+  requestAnimationFrame(tick);
+}
+
+/* ------------------------------------------------------------------ START */
+// Begin in a passage, a little way before the first chamber, so the first minute is: passage -> squeeze -> reveal.
+(() => { for (let i = 0; i < 6; i++) { const c = cellInfo(i), st = c.center - c.half - c.ramp - 130; if (c.has && st >= 0) { sCam = st; return; } } })();
+applyFov();
+window.dispatchEvent(new Event('resize'));
+updateStreaming(sCam);
+pumpJobs(1e9);                    // build the initial run of segments before showing anything
+snapLook();
+updateCamera();
+document.getElementById('load').classList.add('gone');
+requestAnimationFrame(t => { last = t; tick(t); });
+
+/* Handy hooks — for later integration (e.g. the Platonic-solid network) and for testing. */
+window.CaveWalk = {
+  CFG, PAL, SHAPES, pathX, frame, wallOffset, wallHalfWidth, ceilH, archLocal, floorH, toWorld, floorEdge,
+  spaceAt, cellInfo, chamberPond, snapLook, headlamp, gaze, beam,
+  poolPlanFor(i) { return planSmallPool(i * CFG.SEG_LEN, mulberry32(hash3(i, 0, 777) * 4294967296)); },   // small puddle plan for segment i
+  get segments() { return segments; }, get jobs() { return jobs; },
+  get s() { return sCam; }, set s(v) { sCam = v; }, get seed() { return SEED; }, set seed(v) { SEED = v; },
+  get camera() { return camera; }, get target() { return camTarget; }, scene, renderer,
+  setPaused(p) { paused = !!p; }, resetWorld, updateStreaming, pumpJobs, updateCamera, renderFrame,
+  get lookOpen() { return lookOpen; }, set lookOpen(v) { lookOpen = v; },
+  setGaze(y, p) { gazeSet = y === null ? null : [y, p]; }, setBeam(y, p) { beamSet = y === null ? null : [y, p]; },   // pin the gaze / beam (radians); null releases
+  setLamp(on) { lampOn = !!on; lampLevel = on ? 1 : 0; }, setRoam(on) { roam = !!on; },
+  setAim, get aimEnabled() { return aimEnabled; }, setDialog, get dialogOpen() { return dialogOpen; },
+  get speedMul() { return speedMul; }, set speedMul(v) { speedMul = v; }, get walkSpeed() { return CFG.WALK_SPEED; },
+};
+})();
+</script>
+</body>
+</html>
